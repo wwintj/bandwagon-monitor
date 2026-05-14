@@ -31,5 +31,5 @@ wget -O bwg-monitor.sh https://raw.githubusercontent.com/wwintj/bandwagon-monito
 如果你想移除该监控脚本及相关的定时任务，请在服务器上运行以下命令：
 
 ```bash
-rm -rf /opt/bwg_monitor && crontab -l | grep -v "/opt/bwg_monitor/bwg_monitor.py" | crontab -
+rm -rf /opt/bwg_monitor && crontab -l | grep -v "/opt/bwg_monitor/bwg_monitor.py" | crontab - && rm -f bwg-monitor.sh
 ```
