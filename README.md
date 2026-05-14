@@ -22,6 +22,7 @@
 
 ```bash
 wget -O install.sh [https://raw.githubusercontent.com/wwintj/bandwagon-monitor/main/install.sh](https://raw.githubusercontent.com/wwintj/bandwagon-monitor/main/install.sh) && bash install.sh
+```
 
 运行后，根据终端提示输入上述的 4 个参数以及你期望的定时推送时间即可。
 
