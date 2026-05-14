@@ -33,13 +33,12 @@ SCRIPT_PATH="${INSTALL_DIR}/bwg_monitor.py"
 # 创建目录
 mkdir -p ${INSTALL_DIR}
 
-# 3. 生成 Python 脚本（使用内建库，免去 pip 安装烦恼）
+# 3. 生成 Python 脚本（已修复 403 拦截问题）
 cat << EOF > ${SCRIPT_PATH}
 import urllib.request
 import urllib.parse
 import json
 from datetime import datetime, timezone, timedelta
-import sys
 
 # === 配置注入 ===
 VEID = '${VEID}'
@@ -51,7 +50,11 @@ TZ_OFFSET = ${TZ_OFFSET}
 def get_bwg_info():
     url = f"https://api.64clouds.com/v1/getServiceInfo?veid={VEID}&api_key={API_KEY}"
     try:
-        req = urllib.request.Request(url)
+        # 加入 User-Agent 伪装，突破 403 拦截
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+        req = urllib.request.Request(url, headers=headers)
         with urllib.request.urlopen(req) as response:
             data = json.loads(response.read().decode('utf-8'))
         
@@ -59,7 +62,7 @@ def get_bwg_info():
         total_bw = data['plan_monthly_data'] / (1024**3)
         used_bw = data['data_counter'] / (1024**3)
         
-        # 处理时区与重置日期 (搬瓦工 API 给出的是绝对时间戳)
+        # 处理时区与重置日期
         tz = timezone(timedelta(hours=TZ_OFFSET))
         reset_day = datetime.fromtimestamp(data['data_next_reset'], tz).strftime('%Y-%m-%d')
         
@@ -87,7 +90,9 @@ def send_telegram(text):
     }).encode('utf-8')
     
     try:
-        req = urllib.request.Request(url, data=data)
+        # Telegram 请求同样加上 headers 更稳妥
+        headers = {'User-Agent': 'Mozilla/5.0'}
+        req = urllib.request.Request(url, data=data, headers=headers)
         with urllib.request.urlopen(req) as response:
             print("Telegram 消息推送成功！")
     except Exception as e:
@@ -101,11 +106,8 @@ EOF
 chmod +x ${SCRIPT_PATH}
 
 # 4. 设置 Crontab 定时任务
-# 先清除可能存在的旧任务，防止重复写入
 crontab -l 2>/dev/null | grep -v "${SCRIPT_PATH}" > /tmp/current_cron
-# 添加新任务
 echo "${CRON_MINUTE} ${CRON_HOUR} * * * /usr/bin/python3 ${SCRIPT_PATH} >> ${INSTALL_DIR}/cron.log 2>&1" >> /tmp/current_cron
-# 应用任务
 crontab /tmp/current_cron
 rm /tmp/current_cron
 
