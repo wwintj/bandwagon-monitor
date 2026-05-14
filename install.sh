@@ -16,6 +16,11 @@ read -p "请输入您的 Telegram Bot Token: " TG_TOKEN
 read -p "请输入您的 Telegram Chat ID: " CHAT_ID
 
 echo ""
+echo "--- 计费周期设置 ---"
+# 优化：增加直接回车使用 API 的提示
+read -p "请输入每月流量重置日 (1-31, 直接回车则默认使用搬瓦工API自动获取): " RESET_DAY
+
+echo ""
 echo "--- 定时任务设置 ---"
 read -p "请设置每天发送提醒的 [小时] (0-23, 例如早上9点输入 9): " CRON_HOUR
 read -p "请设置每天发送提醒的 [分钟] (0-59, 例如半点输入 30): " CRON_MINUTE
@@ -33,11 +38,12 @@ SCRIPT_PATH="${INSTALL_DIR}/bwg_monitor.py"
 # 创建目录
 mkdir -p ${INSTALL_DIR}
 
-# 3. 生成 Python 脚本（已修复 403 拦截问题）
+# 3. 生成 Python 脚本（智能判断 API vs 手动输入）
 cat << EOF > ${SCRIPT_PATH}
 import urllib.request
 import urllib.parse
 import json
+import calendar
 from datetime import datetime, timezone, timedelta
 
 # === 配置注入 ===
@@ -46,11 +52,11 @@ API_KEY = '${API_KEY}'
 TG_TOKEN = '${TG_TOKEN}'
 CHAT_ID = '${CHAT_ID}'
 TZ_OFFSET = ${TZ_OFFSET}
+RESET_DAY_INPUT = '${RESET_DAY}'
 
 def get_bwg_info():
     url = f"https://api.64clouds.com/v1/getServiceInfo?veid={VEID}&api_key={API_KEY}"
     try:
-        # 加入 User-Agent 伪装，突破 403 拦截
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
         }
@@ -61,20 +67,52 @@ def get_bwg_info():
         # 将字节转换为 GB
         total_bw = data['plan_monthly_data'] / (1024**3)
         used_bw = data['data_counter'] / (1024**3)
-        
-        # 处理时区与重置日期
-        tz = timezone(timedelta(hours=TZ_OFFSET))
-        reset_day = datetime.fromtimestamp(data['data_next_reset'], tz).strftime('%Y-%m-%d')
-        
         percentage = (used_bw / total_bw) * 100
         
+        # 处理时区
+        tz = timezone(timedelta(hours=TZ_OFFSET))
+        now = datetime.now(tz)
+        
+        # 判断是使用 API 还是用户手动输入的日期
+        if RESET_DAY_INPUT.strip() == "":
+            # 用户直接回车，使用 API 自动获取
+            reset_date = datetime.fromtimestamp(data['data_next_reset'], tz)
+            reset_source = "API 自动获取"
+        else:
+            # 用户手动输入了日期
+            try:
+                user_day = int(RESET_DAY_INPUT.strip())
+                _, days_in_month = calendar.monthrange(now.year, now.month)
+                safe_day = min(user_day, days_in_month)
+                reset_date = now.replace(day=safe_day, hour=0, minute=0, second=0, microsecond=0)
+                
+                # 如果本月的重置日已经过去，则计算下个月的
+                if now >= reset_date:
+                    next_month = now.month + 1 if now.month < 12 else 1
+                    next_year = now.year + 1 if now.month == 12 else now.year
+                    _, days_in_next_month = calendar.monthrange(next_year, next_month)
+                    safe_next_day = min(user_day, days_in_next_month)
+                    reset_date = reset_date.replace(year=next_year, month=next_month, day=safe_next_day)
+                reset_source = "手动设定"
+            except ValueError:
+                # 容错：如果用户输入了乱码，退回 API 模式
+                reset_date = datetime.fromtimestamp(data['data_next_reset'], tz)
+                reset_source = "API 自动获取(降级)"
+
+        # 计算剩余天数
+        days_left = (reset_date.date() - now.date()).days
+        if days_left < 0:
+            days_left = 0
+            
         message = (
             f"📊 **VPS 流量监控报告**\n"
             f"--- \n"
             f"📈 当前用量: {used_bw:.2f} GB\n"
             f"🚩 总计流量: {total_bw:.0f} GB\n"
             f"🔄 使用比例: {percentage:.2f}%\n"
-            f"🗓 重置日期: {reset_day} (UTC{TZ_OFFSET:+d})\n"
+            f"--- \n"
+            f"🗓 下次重置: {reset_date.strftime('%Y-%m-%d')} ({reset_source})\n"
+            f"⏳ 剩余时间: {days_left} 天\n"
         )
         
         send_telegram(message)
@@ -90,7 +128,6 @@ def send_telegram(text):
     }).encode('utf-8')
     
     try:
-        # Telegram 请求同样加上 headers 更稳妥
         headers = {'User-Agent': 'Mozilla/5.0'}
         req = urllib.request.Request(url, data=data, headers=headers)
         with urllib.request.urlopen(req) as response:
