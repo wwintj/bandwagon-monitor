@@ -26,8 +26,10 @@ wget -O install.sh [https://raw.githubusercontent.com/wwintj/bandwagon-monitor/m
 
 运行后，根据终端提示输入上述的 4 个参数以及你期望的定时推送时间即可。
 
-🗑️ 一键卸载
+## 🗑️ 一键卸载
+
 如果你想移除该监控脚本及相关的定时任务，请在服务器上运行以下命令：
 
 ```bash
 rm -rf /opt/bwg_monitor && crontab -l | grep -v "/opt/bwg_monitor/bwg_monitor.py" | crontab -
+```
