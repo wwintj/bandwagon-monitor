@@ -21,7 +21,7 @@
 使用 root 用户登录你的任意一台 Linux 服务器（不限制必须是搬瓦工本机），运行以下命令：
 
 ```bash
-wget -O install.sh https://raw.githubusercontent.com/wwintj/bandwagon-monitor/main/install.sh && bash install.sh
+wget -O bwg-monitor.sh https://raw.githubusercontent.com/wwintj/bandwagon-monitor/main/bwg-monitor.sh && bash bwg-monitor.sh
 ```
 
 运行后，根据终端提示输入上述的 4 个参数以及你期望的定时推送时间即可。
